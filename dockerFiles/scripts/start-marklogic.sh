@@ -123,6 +123,6 @@ sleep 5s
 fi
 
 ################################################################
-# tail ErrorLog for docker logs
+# tail /dev/null to keep container active
 ################################################################
-tail -f $MARKLOGIC_DATA_DIR/Logs/ErrorLog.txt
+tail -f /dev/null

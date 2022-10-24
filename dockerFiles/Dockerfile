@@ -47,6 +47,7 @@ RUN echo "NETWORKING=yes" > /etc/sysconfig/network \
 ###############################################################
 
 COPY /scripts/start.sh /usr/local/bin/start.sh
+COPY /scripts/join-cluster.sh /usr/local/bin/join-cluster.sh
 
 ###############################################################
 # install MarkLogic server
@@ -73,6 +74,7 @@ RUN adduser --gid users --uid 1000 ${ML_USER}
 ###############################################################
 # set marklogic.conf authorisation
 ###############################################################
+
 RUN touch /etc/marklogic.conf \
     && chown ${ML_USER} /etc/marklogic.conf \
     && chmod 644 /etc/marklogic.conf

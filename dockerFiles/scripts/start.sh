@@ -58,6 +58,7 @@ fi
 if [[ "${OVERWRITE_ML_CONF}" == "true" ]]; then
     info "OVERWRITE_ML_CONF is true, deleting existing /etc/marklogic.conf and overwriting with ENV variables."
 
+
     [[ "${MARKLOGIC_PID_FILE}" ]] && echo "export MARKLOGIC_PID_FILE=$MARKLOGIC_PID_FILE" >>/etc/marklogic.conf
     [[ "${MARKLOGIC_UMASK}" ]] && echo "export MARKLOGIC_UMASK=$MARKLOGIC_UMASK" >>/etc/marklogic.conf
     [[ "${TZ}" ]] && echo "export TZ=$TZ " >>/etc/marklogic.conf
@@ -151,6 +152,7 @@ function curl_retry_validate {
     for ((i = 0; i < N_RETRY; i = i + 1)); do
         request="curl -m 30 -s -w '%{http_code}' $3 $1"
         response_code=$(eval "${request}")
+        info "retrying http call ${1}: response code=${response_code}" 
         if [[ ${response_code} -eq $2 ]]; then
             return 0
         fi

@@ -128,7 +128,7 @@ function restart_check {
             sleep ${RETRY_INTERVAL}
             LAST_START=$(curl -s --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}" "http://$1:8001/admin/v1/timestamp")
         else
-            info "MarkLogic has restarted."
+            info "MarkLogic has well restarted."
             return 0
         fi
     done
@@ -152,14 +152,15 @@ function curl_retry_validate {
     for ((i = 0; i < N_RETRY; i = i + 1)); do
         request="curl -m 30 -s -w '%{http_code}' $3 $1"
         response_code=$(eval "${request}")
-        info "retrying http call ${1}: response code=${response_code}" 
-        if [[ ${response_code} -eq $2 ]]; then
-            return 0
-        fi
+        info "retrying http call ${1}: response code=${response_code}"
+        
+        # if [[ ${response_code} -eq $2 ]]; then
+        #     return 0
+        # fi
         sleep ${RETRY_INTERVAL}
     done
 
-    error "Expected response code ${2}, got ${response_code} from ${1}." exit
+   # error "Expected response code ${2}, got ${response_code} from ${1}." exit
 }
 
 ################################################################

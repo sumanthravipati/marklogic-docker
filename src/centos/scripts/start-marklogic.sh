@@ -57,8 +57,8 @@ fi
 # If an ENV value exists in a list, append it to the /etc/marklogic.conf file
 if [[ "${OVERWRITE_ML_CONF}" == "true" ]]; then
     info "OVERWRITE_ML_CONF is true, deleting existing /etc/marklogic.conf and overwriting with ENV variables."
-    rm -f /etc/marklogic.conf
-    touch /etc/marklogic.conf
+    sudo rm -f /etc/marklogic.conf
+    sudo touch /etc/marklogic.conf
 
     [[ "${MARKLOGIC_PID_FILE}" ]] && echo "export MARKLOGIC_PID_FILE=$MARKLOGIC_PID_FILE" >>/etc/marklogic.conf
     [[ "${MARKLOGIC_UMASK}" ]] && echo "export MARKLOGIC_UMASK=$MARKLOGIC_UMASK" >>/etc/marklogic.conf

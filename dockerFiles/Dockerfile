@@ -36,18 +36,17 @@ LABEL docker.cmd="docker run -it -p 7997-8010:7997-8010 -e MARKLOGIC_INIT=true -
 
 RUN echo "NETWORKING=yes" > /etc/sysconfig/network \
     && yum -y update \
-    && yum -y install gdb.x86_64 glibc.i686 initscripts redhat-lsb-core.x86_64 tzdata ntp \
+    && yum -y install gdb.x86_64 glibc.i686 initscripts redhat-lsb-core.x86_64 tzdata ntp libhugetlbfs-utils \
     && yum clean all \
     && ntpdate -s pool.ntp.org \
     && chkconfig ntpdate on \
     && chkconfig ntpd on
 
-####################################################
+###############################################################
 # inject init, start and clustering scripts
 ###############################################################
 
-COPY /scripts/start.sh /usr/local/bin/start.sh
-COPY /scripts/join-cluster.sh /usr/local/bin/join-cluster.sh
+COPY /conf/start-marklogic.sh /usr/local/bin/start-marklogic.sh
 
 ###############################################################
 # install MarkLogic server
@@ -79,7 +78,11 @@ RUN touch /etc/marklogic.conf \
     && chown ${ML_USER} /etc/marklogic.conf \
     && chmod 644 /etc/marklogic.conf
 
+###############################################################
+# set hugetlb_shm_group
+###############################################################
 
+RUN hugeadm --set-shm-group=100
 
 ###############################################################
 # Add TINI to serve as PID 1 process
@@ -105,9 +108,9 @@ ENV MARKLOGIC_INSTALL_DIR=/opt/MarkLogic  \
     MARKLOGIC_WALLET_PASSWORD_FILE=mldb_wallet_password \
     TZ=:/etc/localtime
 
-################################################################################
-# Set appropriate authorisation to MARKLOGIC_DATA_DIR and MARKLOGIC_INSTALL_DIR
-################################################################################
+################################################################
+# Set appropriate authorisation to MARKLOGIC_DATA_DIR 
+################################################################
 
 RUN mkdir -p ${MARKLOGIC_DATA_DIR} \
     && chown -R ${ML_USER} ${MARKLOGIC_DATA_DIR}     
@@ -125,6 +128,12 @@ EXPOSE 25 7997-8010
 USER ${ML_USER}
 
 ###############################################################
+# ulimit settings
+###############################################################
+
+RUN ulimit -Hu
+
+###############################################################
 # define volume for persistent MarkLogic server data
 ###############################################################
 
@@ -133,5 +142,5 @@ VOLUME /var/opt/MarkLogic
 ###############################################################
 # set entrypoint
 ###############################################################
-ENTRYPOINT ["/tini", "--", "/usr/local/bin/start.sh"]
+ENTRYPOINT ["/tini", "--", "/usr/local/bin/start-marklogic.sh"]
 

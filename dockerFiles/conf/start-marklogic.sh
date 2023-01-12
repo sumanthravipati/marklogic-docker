@@ -1,7 +1,7 @@
 #! /bin/bash
 ###############################################################
 #
-#   Copyright 2022 MarkLogic Corporation.  All Rights Reserved.
+#   Copyright 2023 MarkLogic Corporation.  All Rights Reserved.
 #
 ###############################################################
 #   Initialise and start MarkLogic server
@@ -58,7 +58,6 @@ fi
 if [[ "${OVERWRITE_ML_CONF}" == "true" ]]; then
     info "OVERWRITE_ML_CONF is true, deleting existing /etc/marklogic.conf and overwriting with ENV variables."
 
-
     [[ "${MARKLOGIC_PID_FILE}" ]] && echo "export MARKLOGIC_PID_FILE=$MARKLOGIC_PID_FILE" >>/etc/marklogic.conf
     [[ "${MARKLOGIC_UMASK}" ]] && echo "export MARKLOGIC_UMASK=$MARKLOGIC_UMASK" >>/etc/marklogic.conf
     [[ "${TZ}" ]] && echo "export TZ=$TZ " >>/etc/marklogic.conf
@@ -84,19 +83,19 @@ fi
 ################################################################
 # Install Converters if required
 ################################################################
-# if [[ "${INSTALL_CONVERTERS}" == "true" ]]; then
-#     if [[ -d "/opt/MarkLogic/Converters" ]]; then
-#         info "Converters directory: /opt/MarkLogic/Converters already exists, skipping installation of converters."
-#     else
-#         info "INSTALL_CONVERTERS is true, installing converters."
-#         CONVERTERS_PATH="/converters.rpm"
-#         sudo yum localinstall -y $CONVERTERS_PATH
-#     fi
-# elif [[ -z "${INSTALL_CONVERTERS}" ]] || [[ "${INSTALL_CONVERTERS}" == "false" ]]; then
-#     info "INSTALL_CONVERTERS is false, not installing converters."
-# else
-#     error "INSTALL_CONVERTERS must be true or false." exit
-# fi
+if [[ "${INSTALL_CONVERTERS}" == "true" ]]; then
+    if [[ -d "/opt/MarkLogic/Converters" ]]; then
+        info "Converters directory: /opt/MarkLogic/Converters already exists, skipping installation of converters."
+    else
+        info "INSTALL_CONVERTERS is true, installing converters."
+        CONVERTERS_PATH="/converters.rpm"
+        sudo yum localinstall -y $CONVERTERS_PATH
+    fi
+elif [[ -z "${INSTALL_CONVERTERS}" ]] || [[ "${INSTALL_CONVERTERS}" == "false" ]]; then
+    info "INSTALL_CONVERTERS is false, not installing converters."
+else
+    error "INSTALL_CONVERTERS must be true or false." exit
+fi
 
 ################################################################
 # Setup timezone
@@ -106,6 +105,10 @@ fi
 #     sudo ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime
 #     echo "${TZ}" | sudo tee /etc/timezone
 # fi
+
+# Values taken directy from documentation: https://docs.marklogic.com/guide/admin-api/cluster#id_10889
+N_RETRY=5 
+RETRY_INTERVAL=10
 
 ################################################################
 # restart_check(hostname, baseline_timestamp)
@@ -118,17 +121,15 @@ fi
 #   $2 :  The baseline timestamp
 # Returns 0 if restart is detected, exits with an error if not.
 ################################################################
-N_RETRY=5 # 5 and 10 numbers taken directy from documentation: https://docs.marklogic.com/guide/admin-api/cluster#id_10889
-RETRY_INTERVAL=10
-
 function restart_check {
+    info "Waiting for MarkLogic to restart."
     LAST_START=$(curl -s --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}" "http://$1:8001/admin/v1/timestamp")
     for i in $(seq 1 ${N_RETRY}); do
         if [ "$2" == "${LAST_START}" ] || [ -z "${LAST_START}" ]; then
             sleep ${RETRY_INTERVAL}
             LAST_START=$(curl -s --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}" "http://$1:8001/admin/v1/timestamp")
         else
-            info "MarkLogic has well restarted."
+            info "MarkLogic has restarted."
             return 0
         fi
     done
@@ -152,15 +153,13 @@ function curl_retry_validate {
     for ((i = 0; i < N_RETRY; i = i + 1)); do
         request="curl -m 30 -s -w '%{http_code}' $3 $1"
         response_code=$(eval "${request}")
-        info "retrying http call ${1}: response code=${response_code}"
-        
-        # if [[ ${response_code} -eq $2 ]]; then
-        #     return 0
-        # fi
+        if [[ ${response_code} -eq $2 ]]; then
+            return 0
+        fi
         sleep ${RETRY_INTERVAL}
     done
 
-   # error "Expected response code ${2}, got ${response_code} from ${1}." exit
+    error "Expected response code ${2}, got ${response_code} from ${1}." exit
 }
 
 ################################################################
@@ -217,7 +216,7 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
 
     # Make sure username and password variables are not empty
     if [[ -z "${ML_ADMIN_USERNAME}" ]] || [[ -z "${ML_ADMIN_PASSWORD}" ]]; then
-        error "ML_ADMIN_USERNAME and ML_ADMIN_PASSWORD must be set." exit
+        error "MARKLOGIC_ADMIN_USERNAME and MARKLOGIC_ADMIN_PASSWORD must be set." exit
     fi
 
     # generate JSON payload conditionally with license details.
@@ -250,16 +249,22 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
         http://"${HOSTNAME}":8001/admin/v1/init |
         grep "last-startup" |
         sed 's%^.*<last-startup.*>\(.*\)</last-startup>.*$%\1%')
-
-    # Make sure marklogic has shut down and come back up before moving on
-    info "Waiting for MarkLogic to restart."
-
     restart_check "${HOSTNAME}" "${TIMESTAMP}"
 
-    curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null \
-        -X POST -H \"Content-type:application/x-www-form-urlencoded\" \
-        -d \"admin-username=${ML_ADMIN_USERNAME}\" -d \"admin-password=${ML_ADMIN_PASSWORD}\" \
-        -d \"realm=${ML_REALM}\" -d \"${ML_WALLET_PASSWORD_PAYLOAD}\""
+    # Only call /v1/instance-admin if host is bootstrap/standalone host
+    if [[ "${HOSTNAME}" == "${MARKLOGIC_BOOTSTRAP_HOST}" ]] || [[ "${MARKLOGIC_JOIN_CLUSTER}" != "true" ]]; then
+        info "Installing admin username and password, and initialize the security database and objects."
+
+        # Get last restart timestamp directly before instance-admin call to verify restart after
+        TIMESTAMP=$(curl -s --anyauth "http://${HOSTNAME}:8001/admin/v1/timestamp")
+
+        curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null \
+            -X POST -H \"Content-type:application/x-www-form-urlencoded; charset=utf-8\" \
+            -d \"admin-username=${ML_ADMIN_USERNAME}\" --data-urlencode \"admin-password=${ML_ADMIN_PASSWORD}\" \
+            -d \"realm=${ML_REALM}\" -d \"${ML_WALLET_PASSWORD_PAYLOAD}\""
+
+        restart_check "${HOSTNAME}" "${TIMESTAMP}"
+    fi
 
     touch /var/opt/MarkLogic/DOCKER_INIT
 elif [[ -z "${MARKLOGIC_INIT}" ]] || [[ "${MARKLOGIC_INIT}" == "false" ]]; then

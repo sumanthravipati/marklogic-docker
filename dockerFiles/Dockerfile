@@ -9,9 +9,10 @@ From centos:centos7
 ###############################################################
 # set build args
 ###############################################################
-ARG ML_RPM=marklogic.rpm
+ARG ML_RPM="/work/ML.rpm"
 ARG ML_USER="marklogic_user"
-ARG ML_VERSION=10-internal
+ARG ML_VERSION=11-internal
+ARG TZ="Europe/Paris"
 
 ###############################################################
 # define docker labels
@@ -29,6 +30,12 @@ LABEL "com.marklogic.license.url"="https://developer.marklogic.com/eula"
 LABEL "com.marklogic.version"="${ML_VERSION}"
 LABEL "com.marklogic.description"="MarkLogic is the only Enterprise NoSQL database. It is a new generation database built with a flexible data model to store, manage, and search JSON, XML, RDF, and more - without sacrificing enterprise features such as ACID transactions, certified security, and backup and recovery. With these capabilities, MarkLogic is ideally suited for making heterogeneous data integration simpler and faster and for doing dynamic content delivery at massive scale. MarkLogic Developer redhat image includes all features but is limited to pre-production applications and use."
 LABEL docker.cmd="docker run -it -p 7997-8010:7997-8010 -e MARKLOGIC_INIT=true -e MARKLOGIC_ADMIN_USERNAME=<INSERT USERNAME> -e MARKLOGIC_ADMIN_PASSWORD=<INSERT PASSWORD> -v ~/data:/var/opt/MarkLogic marklogicdb/marklogic-server-centos:${ML_VERSION}"
+
+###############################################################
+# define env for TimeZone 
+###############################################################
+
+ENV TZ=$TZ
 
 ###############################################################
 # install networking, base deps and ntp/tzdata for timezone
@@ -89,7 +96,8 @@ RUN hugeadm --set-shm-group=100
 ###############################################################
 ENV TINI_VERSION v0.19.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
+RUN chown ${ML_USER} /tini \
+    && chmod +x /tini
 
 ###############################################################
 # set env vars
@@ -142,5 +150,6 @@ VOLUME /var/opt/MarkLogic
 ###############################################################
 # set entrypoint
 ###############################################################
-ENTRYPOINT ["/tini", "--", "/usr/local/bin/start-marklogic.sh"]
+ENTRYPOINT ["/tini", "--"]
+CMD ["/usr/local/bin/start-marklogic.sh"]
 

@@ -43,10 +43,10 @@ ENV TZ=$TZ
 
 RUN yum -y update \
     && yum -y install gdb.x86_64 glibc.i686 initscripts redhat-lsb-core.x86_64 tzdata ntp libhugetlbfs-utils \
-    && yum clean all \
-    && ntpdate -s pool.ntp.org \
-    && chkconfig ntpdate on \
-    && chkconfig ntpd on
+    && yum clean all
+    # && ntpdate -s pool.ntp.org \
+    # && chkconfig ntpdate on \
+    # && chkconfig ntpd on
 
 ###############################################################
 # inject init, start and clustering scripts

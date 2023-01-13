@@ -9,7 +9,7 @@ From centos:centos7
 ###############################################################
 # set build args
 ###############################################################
-ARG ML_RPM="ML.rpm"
+ARG ML_RPM="ML11.rpm"
 ARG ML_USER="marklogic_user"
 ARG ML_VERSION=11-internal
 ARG TZ="Europe/Paris"

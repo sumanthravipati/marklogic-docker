@@ -84,11 +84,6 @@ RUN touch /etc/marklogic.conf \
     && chown ${ML_USER} /etc/marklogic.conf \
     && chmod 644 /etc/marklogic.conf
 
-###############################################################
-# set hugetlb_shm_group
-###############################################################
-
-RUN hugeadm --set-shm-group=100
 
 ###############################################################
 # Add TINI to serve as PID 1 process

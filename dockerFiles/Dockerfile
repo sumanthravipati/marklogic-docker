@@ -41,8 +41,7 @@ ENV TZ=$TZ
 # install networking, base deps and ntp/tzdata for timezone
 ###############################################################
 
-RUN echo "NETWORKING=yes" > /etc/sysconfig/network \
-    && yum -y update \
+RUN yum -y update \
     && yum -y install gdb.x86_64 glibc.i686 initscripts redhat-lsb-core.x86_64 tzdata ntp libhugetlbfs-utils \
     && yum clean all \
     && ntpdate -s pool.ntp.org \

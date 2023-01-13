@@ -9,7 +9,7 @@ From centos:centos7
 ###############################################################
 # set build args
 ###############################################################
-ARG ML_RPM="/work/ML.rpm"
+ARG ML_RPM="../../ML.rpm"
 ARG ML_USER="marklogic_user"
 ARG ML_VERSION=11-internal
 ARG TZ="Europe/Paris"
@@ -53,7 +53,7 @@ RUN echo "NETWORKING=yes" > /etc/sysconfig/network \
 # inject init, start and clustering scripts
 ###############################################################
 
-COPY /conf/start-marklogic.sh /usr/local/bin/start-marklogic.sh
+COPY conf/start-marklogic.sh /usr/local/bin/start-marklogic.sh
 
 ###############################################################
 # install MarkLogic server

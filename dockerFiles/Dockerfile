@@ -97,7 +97,7 @@ RUN chown ${ML_USER} /tini \
 ENV MARKLOGIC_INSTALL_DIR=/opt/MarkLogic  \
     MARKLOGIC_DATA_DIR=/var/opt/MarkLogic \
     MARKLOGIC_USER=${ML_USER} \
-    MARKLOGIC_PID_FILE=/var/run/MarkLogic.pid  \
+    MARKLOGIC_PID_FILE=/home/${ML_USER}/MarkLogic.pid  \
     MARKLOGIC_UMASK=022 \
     LD_LIBRARY_PATH=/lib64:$LD_LIBRARY_PATH:/opt/MarkLogic/lib \
     MARKLOGIC_VERSION="${ML_VERSION}" \

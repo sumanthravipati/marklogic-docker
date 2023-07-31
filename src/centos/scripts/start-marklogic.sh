@@ -1,5 +1,3 @@
-#! /bin/bash
-###############################################################
 #
 #   Copyright 2023 MarkLogic Corporation.  All Rights Reserved.
 #
@@ -148,6 +146,32 @@ function restart_check {
 }
 
 ################################################################
+# setting default protocol for curl calls to bootstrap host
+################################################################
+ML_BOOTSTRAP_TLS="http"
+
+################################################################
+# Check if TLS is enabled on Bootstrap host
+################################################################
+function check_tls_enabled {
+    SECRET_CACERT_FILE="/run/secrets/${MARKLOGIC_JOIN_CACERT_FILE}"
+    if [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "true" ]]; then
+        if [[ -f "${SECRET_CACERT_FILE}" ]] && [[ -n "$(<"${SECRET_CACERT_FILE}")" ]]; then
+            ML_JOIN_CACERT_FILE=$(<"${SECRET_PWD_FILE}")
+            ML_BOOTSTRAP_TLS="https"
+            info "MARKLOGIC_JOIN_TLS_ENABLED is set, using HTTPS for joining cluster."
+            info "MARKLOGIC_JOIN_CACERT_FILE is set, using Docker secrets for CA certificate."
+        else
+            error "MARKLOGIC_JOIN_CACERT_FILE is not set, please review the configuration. Node shutting down." exit
+        fi
+    elif [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "false" ]] && [[ -z "${MARKLOGIC_JOIN_TLS_ENABLED}" ]]; then
+        info "MARKLOGIC_JOIN_TLS_ENABLED is not set, using HTTP for joining cluster."
+    else
+        error "MARKLOGIC_JOIN_TLS_ENABLED must be set to true or false, please review the configuration. Node shutting down." exit
+    fi
+}
+
+################################################################
 # retry_and_timeout(target_url, expected_response_code, additional_options, return_error)
 # The third argument is optional and can be used to pass additional options to curl.
 # Fourth argurment is optional, default is set to true, can be used when custom error handling is required,
@@ -176,7 +200,7 @@ function curl_retry_validate {
         sleep ${RETRY_INTERVAL}
     done
     if [[ "${return_error}" = "false" ]] ; then
-        return "${response_code}"  
+        return "${response_code}"
     fi
     error "Expected response code ${2}, got ${response_code} from ${1}." exit
 }
@@ -184,12 +208,13 @@ function curl_retry_validate {
 ################################################################
 # Fetches host id
 # input:  $1:     host name
+#         $2:        Optional parameter to set protocol for curl
 ################################################################
 function get_host_id {
-    local hostname=$1
-    local host_id=""
-    curl_retry_validate "http://${hostname}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
-            -o host_config.xml -X GET -H \"Accept: application/xml\"" false
+    local hostname=$1 host_id=""
+    local protocol="${2:-http}"
+    curl_retry_validate "${protocol}://${hostname}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
+            -o host_config.xml -X GET -H \"Accept: application/xml\" --cacert \"${SECRET_CACERT_FILE}\"" false
     [[ -f host_config.xml ]] && host_id=$(< host_config.xml grep "host-id" | sed 's%^.*<host-id.*>\(.*\)</host-id>.*$%\1%')
     echo "${host_id}"
     rm -f host_config.xml
@@ -203,10 +228,8 @@ function get_host_id {
 #         localhost: if bootstrap host is the localhost
 ################################################################
 function verify_bootstrap_status {
-    local bootstrap_host=$1
-    local bootstrap_host_id=""
-    local localhost_id=""
-    bootstrap_host_id=$(get_host_id "${bootstrap_host}")
+    local bootstrap_host=$1 bootstrap_host_id="" localhost_id=""
+    bootstrap_host_id=$(get_host_id "${bootstrap_host}" "${ML_BOOTSTRAP_TLS}")
     localhost_id=$(get_host_id "localhost")
     if [[ "${bootstrap_host_id}" == "" ]]; then
         echo "invalid"
@@ -341,6 +364,8 @@ fi
 if [[ -f /var/opt/MarkLogic/DOCKER_JOIN_CLUSTER ]]; then
     info "MARKLOGIC_JOIN_CLUSTER is true, but skipping join because this instance has already joined a cluster."
 elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
+    # Check if TLS is enabled on Bootstrap host
+    check_tls_enabled
     # Validate bootsrap host before joining cluster
     BOOTSTRAP_STATUS=$(verify_bootstrap_status "${MARKLOGIC_BOOTSTRAP_HOST}")
 
@@ -350,7 +375,7 @@ elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
             info "MARKLOGIC_GROUP is not specified, adding host to the Default group."
             MARKLOGIC_GROUP_PAYLOAD=\"group=Default\"
         else
-            curl_retry_validate "http://${MARKLOGIC_BOOTSTRAP_HOST}:8002/manage/v2/groups/${MARKLOGIC_GROUP}" 200 "-X GET -o /dev/null --anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\"" false
+            curl_retry_validate "${ML_BOOTSTRAP_TLS}://${MARKLOGIC_BOOTSTRAP_HOST}:8002/manage/v2/groups/${MARKLOGIC_GROUP}" 200 "-X GET -o /dev/null --anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" --cacert \"${SECRET_CACERT_FILE}\"" false
             GROUP_RESP_CODE=$?
             if [[ ${GROUP_RESP_CODE} -eq 200 ]]; then
                 info "MARKLOGIC_GROUP is specified, adding host to the ${MARKLOGIC_GROUP} group."
@@ -362,11 +387,11 @@ elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
         curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
             -o host.xml -X GET -H \"Accept: application/xml\""
 
-        curl_retry_validate "http://${MARKLOGIC_BOOTSTRAP_HOST}:8001/admin/v1/cluster-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
+        curl_retry_validate "${ML_BOOTSTRAP_TLS}://${MARKLOGIC_BOOTSTRAP_HOST}:8001/admin/v1/cluster-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
             -X POST -d \"${MARKLOGIC_GROUP_PAYLOAD}\" \
             --data-urlencode \"server-config@./host.xml\" \
             -H \"Content-type: application/x-www-form-urlencoded\" \
-            -o cluster.zip"
+            -o cluster.zip --cacert \"${SECRET_CACERT_FILE}\""
 
         # Get last restart timestamp directly before cluster-config call to verify restart after
         TIMESTAMP=$(curl -s --anyauth "http://${HOSTNAME}:8001/admin/v1/timestamp")
@@ -404,7 +429,7 @@ fi
 
 while true
 do
-    HOST_RESP_CODE=$(curl http://"${HOSTNAME}":"${HEALTH_CHECK}" -X GET -o host_health.xml -s -w "%{http_code}\n")
+    HOST_RESP_CODE=$(curl "${ML_BOOTSTRAP_TLS}"://"${HOSTNAME}":"${HEALTH_CHECK}" -X GET -o host_health.xml -s -w "%{http_code}\n")
     [[ -f host_health.xml ]] && error_message=$(< host_health.xml grep "SEC-DEFAULTUSERDNE")
     if [[ "${MARKLOGIC_INIT}" == "true" ]] && [ "${HOST_RESP_CODE}" -eq 200 ]; then
         sudo touch /var/opt/MarkLogic/ready

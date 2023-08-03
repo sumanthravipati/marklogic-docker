@@ -10,7 +10,8 @@
 #   > start-marklogic.sh
 #
 ###############################################################
-
+set -x
+set -o functrace
 ###############################################################
 # Logging utility
 ###############################################################
@@ -116,10 +117,23 @@ if [ -n "${TZ}" ]; then
     echo "${TZ}" | sudo tee /etc/timezone
 fi
 
+function check_bootstrap_protocal {
+    local https_error_message="You have attempted to access an HTTPS server using HTTP"
+    res=$(curl "$1":8001)
+    if [[ "$res" == *"$https_error_message"* ]]
+    then
+        HTTP_PROTOCOL="https"
+        HTTP_OPTION="-k"
+    fi
+}
+
 # Values taken directy from documentation: https://docs.marklogic.com/guide/admin-api/cluster#id_10889
 N_RETRY=5
 RETRY_INTERVAL=10
 
+HTTP_PROTOCOL="http"
+HTTP_OPTION=""
+check_bootstrap_protocal "${MARKLOGIC_BOOTSTRAP_HOST}"
 ################################################################
 # restart_check(hostname, baseline_timestamp)
 #
@@ -188,8 +202,14 @@ function curl_retry_validate {
 function get_host_id {
     local hostname=$1
     local host_id=""
-    curl_retry_validate "http://${hostname}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
-            -o host_config.xml -X GET -H \"Accept: application/xml\"" false
+    local http_protocol="${2:-http}"
+    local http_option=""
+    if [[ "$http_protocol" == "https" ]]
+    then
+        http_option="-k"
+    fi
+    curl_retry_validate "${http_protocol}://${hostname}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
+            -o host_config.xml ${http_option} -X GET -H \"Accept: application/xml\"" false
     [[ -f host_config.xml ]] && host_id=$(< host_config.xml grep "host-id" | sed 's%^.*<host-id.*>\(.*\)</host-id>.*$%\1%')
     echo "${host_id}"
     rm -f host_config.xml
@@ -206,8 +226,10 @@ function verify_bootstrap_status {
     local bootstrap_host=$1
     local bootstrap_host_id=""
     local localhost_id=""
-    bootstrap_host_id=$(get_host_id "${bootstrap_host}")
-    localhost_id=$(get_host_id "localhost")
+    bootstrap_host_id=$(get_host_id "${bootstrap_host}" "${HTTP_PROTOCOL}" )
+    localhost_id=$(get_host_id "localhost" "http")
+    # bootstrap_host_id=$(get_host_id "${bootstrap_host}")
+    # localhost_id=$(get_host_id "localhost")
     if [[ "${bootstrap_host_id}" == "" ]]; then
         echo "invalid"
     elif [[ "${bootstrap_host_id}" != "" ]] && [[ "${bootstrap_host_id}" != "${localhost_id}" ]]; then
@@ -343,14 +365,16 @@ if [[ -f /var/opt/MarkLogic/DOCKER_JOIN_CLUSTER ]]; then
 elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
     # Validate bootsrap host before joining cluster
     BOOTSTRAP_STATUS=$(verify_bootstrap_status "${MARKLOGIC_BOOTSTRAP_HOST}")
-
+    info "MARKLOGIC_BOOTSTRAP_HOST: $MARKLOGIC_BOOTSTRAP_HOST"
+    info "BOOTSTRAP_STATUS: ${BOOTSTRAP_STATUS}"
+    info "HTTP_PROTOCOL ${HTTP_PROTOCOL}"
     if [[ "${BOOTSTRAP_STATUS}" == "valid" ]]; then
         info "MARKLOGIC_JOIN_CLUSTER is true and join conditions are met, joining host to the cluster."
         if [[ -z "${MARKLOGIC_GROUP}" ]]; then
             info "MARKLOGIC_GROUP is not specified, adding host to the Default group."
             MARKLOGIC_GROUP_PAYLOAD=\"group=Default\"
         else
-            curl_retry_validate "http://${MARKLOGIC_BOOTSTRAP_HOST}:8002/manage/v2/groups/${MARKLOGIC_GROUP}" 200 "-X GET -o /dev/null --anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\"" false
+            curl_retry_validate "${HTTP_PROTOCOL}://${MARKLOGIC_BOOTSTRAP_HOST}:8002/manage/v2/groups/${MARKLOGIC_GROUP}" 200 "-X GET ${HTTP_OPTION} -o /dev/null --anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\"" false
             GROUP_RESP_CODE=$?
             if [[ ${GROUP_RESP_CODE} -eq 200 ]]; then
                 info "MARKLOGIC_GROUP is specified, adding host to the ${MARKLOGIC_GROUP} group."
@@ -362,7 +386,7 @@ elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
         curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
             -o host.xml -X GET -H \"Accept: application/xml\""
 
-        curl_retry_validate "http://${MARKLOGIC_BOOTSTRAP_HOST}:8001/admin/v1/cluster-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
+        curl_retry_validate "${HTTP_PROTOCOL}://${MARKLOGIC_BOOTSTRAP_HOST}:8001/admin/v1/cluster-config" 200 "--anyauth ${HTTP_OPTION} --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
             -X POST -d \"${MARKLOGIC_GROUP_PAYLOAD}\" \
             --data-urlencode \"server-config@./host.xml\" \
             -H \"Content-type: application/x-www-form-urlencoded\" \

@@ -20,8 +20,6 @@ ARG ML_CONVERTERS=marklogic.converters
 # inject init, start and clustering scripts
 ###############################################################
 
-COPY scripts/start-marklogic.sh /usr/local/bin/start-marklogic.sh
-
 ###############################################################
 # install MarkLogic server, sudo, and remove mlcmd packages
 ###############################################################
@@ -39,7 +37,6 @@ RUN yum localinstall -y /tmp/marklogic-server.rpm \
 ENV TINI_VERSION v0.19.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod +x /tini
-RUN chmod 777 /usr/local/bin/start-marklogic.sh
 
 ###############################################################
 # Copy converters package 
@@ -116,6 +113,9 @@ USER ${ML_USER}
 ###############################################################
 
 VOLUME /var/opt/MarkLogic
+
+COPY scripts/start-marklogic.sh /usr/local/bin/start-marklogic.sh
+# RUN chmod 777 /usr/local/bin/start-marklogic.sh
 
 ###############################################################
 # set entrypoint

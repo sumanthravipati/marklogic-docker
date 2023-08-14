@@ -43,7 +43,7 @@ rm -f /var/opt/MarkLogic/ready
 info "Starting MarkLogic container with $MARKLOGIC_VERSION from $BUILD_BRANCH"
 cd ~ || exit
 # Convert booleans to lowercase
-for var in OVERWRITE_ML_CONF INSTALL_CONVERTERS MARKLOGIC_DEV_BUILD MARKLOGIC_INIT MARKLOGIC_JOIN_CLUSTER; do
+for var in OVERWRITE_ML_CONF INSTALL_CONVERTERS MARKLOGIC_DEV_BUILD MARKLOGIC_INIT MARKLOGIC_JOIN_CLUSTER MARKLOGIC_JOIN_TLS_ENABLED; do
     declare $var="$(echo "${!var}" | sed -e 's/[[:blank:]]//g' | awk '{print tolower($0)}')"
 done
 
@@ -156,19 +156,39 @@ ML_CACERT_FILE="/run/secrets/${MARKLOGIC_JOIN_CACERT_FILE}"
 ################################################################
 # Check if TLS is enabled on Bootstrap host
 ################################################################
-function check_tls_param {
-    if [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "true" ]]; then
-        if [[ -f "${ML_CACERT_FILE}" ]] && [[ -n "$(<"${ML_CACERT_FILE}")" ]]; then
-            ML_BOOTSTRAP_PROTOCOL="https"
-            info "MARKLOGIC_JOIN_TLS_ENABLED is set, using HTTPS for joining cluster."
-            info "MARKLOGIC_JOIN_CACERT_FILE is set, using Docker secrets for CA certificate."
+function validate_tls_parameters {
+    local bootstrap_status=$1 host_protocol
+    host_protocol=$(get_host_protocol "${MARKLOGIC_BOOTSTRAP_HOST}")
+    if [[ "${bootstrap_status}" != "localhost" ]]; then
+        if [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "true" ]]; then
+            if [[ -f "${ML_CACERT_FILE}" ]] && [[ -n "$(<"${ML_CACERT_FILE}")" ]]; then
+                if [[ "${host_protocol}" == "https" ]]; then
+                    ML_BOOTSTRAP_PROTOCOL="https"
+                    # validate the CA certificate
+                    validate_cert
+                    info "MARKLOGIC_JOIN_TLS_ENABLED and MARKLOGIC_JOIN_CACERT_FILE are set, TLS will be used for joining cluster."
+                else
+                    error "TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down." exit
+                fi
+            else
+                error "MARKLOGIC_JOIN_CACERT_FILE is not set, please review the configuration. Container shutting down." exit
+            fi
+        elif [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "false" ]] || [[ -z "${MARKLOGIC_JOIN_TLS_ENABLED}" ]] || [[ -v "${MARKLOGIC_JOIN_TLS_ENABLED}" ]]; then
+            if [[ "${host_protocol}" == "https" ]]; then
+                error "TLS is enabled on bootstrap_host_name host, please verify the configuration. Container shutting down." exit
+            else
+                info "MARKLOGIC_JOIN_TLS_ENABLED is not set, using HTTP for joining cluster."
+            fi
         else
-            error "MARKLOGIC_JOIN_CACERT_FILE is not set, please review the configuration. Node shutting down." exit
+            error "MARKLOGIC_JOIN_TLS_ENABLED must be set to true or false, please review the configuration. Container shutting down." exit
         fi
-    elif [[ "${MARKLOGIC_JOIN_TLS_ENABLED}" == "false" ]] && [[ -z "${MARKLOGIC_JOIN_TLS_ENABLED}" ]]; then
-        info "MARKLOGIC_JOIN_TLS_ENABLED is not set, using HTTP for joining cluster."
-    else
-        error "MARKLOGIC_JOIN_TLS_ENABLED must be set to true or false, please review the configuration. Node shutting down." exit
+    fi
+}
+
+function validate_cert {
+    resp=$(curl -s --head --cacert "${ML_CACERT_FILE}" "${ML_BOOTSTRAP_PROTOCOL}"://"${MARKLOGIC_BOOTSTRAP_HOST}":8001 --anyauth --user ${ML_ADMIN_USERNAME}:${ML_ADMIN_PASSWORD})
+    if [[ $resp =~ "SSL" ]] ; then
+        error "$resp" exit
     fi
 }
 
@@ -190,10 +210,10 @@ function check_tls_param {
 #   $4 :  Option to return error or response code in case of error   
 ################################################################
 function curl_retry_validate {
-    local retry_count
-    local return_error="${4:-true}"
+    local retry_count response_code request
+    local return_error="${4:-true}" curl_options=$3 endpoint=$1
     for ((retry_count = 0; retry_count < N_RETRY; retry_count = retry_count + 1)); do
-        request="curl -m 30 -s -w '%{http_code}' $3 $1"
+        request="curl -m 30 -s -w '%{http_code}' $curl_options $endpoint"
         response_code=$(eval "${request}")
         if [[ ${response_code} -eq $2 ]]; then
             return "${response_code}"
@@ -213,8 +233,8 @@ function curl_retry_validate {
 function get_host_protocol {
     local hostname=$1 port="${2:-8001}" protocol="http" resp
     local https_error_message="You have attempted to access an HTTPS server using HTTP."
-    resp=$(curl -s http://${hostname}:${port})
-    if [[ "${resp}" =~ "$https_error_message" ]]; then
+    resp=$(curl -s http://"${hostname}":"${port}")
+    if [[ "${resp}" =~ ${https_error_message} ]]; then
         protocol="https"
     fi
     echo $protocol
@@ -226,7 +246,7 @@ function get_host_protocol {
 ################################################################
 function get_host_id {
     local hostname=$1 host_id=""
-    ML_BOOTSTRAP_PROTOCOL=$(get_host_protocol ${hostname})
+    ML_BOOTSTRAP_PROTOCOL=$(get_host_protocol "${hostname}")
     curl_retry_validate "${ML_BOOTSTRAP_PROTOCOL}://${hostname}:8001/admin/v1/server-config" 200 "--anyauth --user \"${ML_ADMIN_USERNAME}\":\"${ML_ADMIN_PASSWORD}\" \
             -o host_config.xml -X GET -H \"Accept: application/xml\" --cacert \"${ML_CACERT_FILE}\"" false
     [[ -f host_config.xml ]] && host_id=$(< host_config.xml grep "host-id" | sed 's%^.*<host-id.*>\(.*\)</host-id>.*$%\1%')
@@ -312,6 +332,9 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
     if [[ -z "${ML_ADMIN_USERNAME}" ]] || [[ -z "${ML_ADMIN_PASSWORD}" ]]; then
         error "MARKLOGIC_ADMIN_USERNAME and MARKLOGIC_ADMIN_PASSWORD must be set." exit
     fi
+    
+    ML_ADMIN_USERNAME_PAYLOAD="admin-username=${ML_ADMIN_USERNAME}"
+    ML_ADMIN_PASSWORD_PAYLOAD="admin-password=${ML_ADMIN_PASSWORD}"
 
     # generate JSON payload conditionally with license details.
     if [[ -z "${LICENSE_KEY}" ]] || [[ -z "${LICENSEE}" ]]; then
@@ -328,9 +351,10 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
         info "REALM is defined, setting realm."
         ML_REALM="${REALM}"
     fi
-
+    ML_REALM_PAYLOAD="realm=${ML_REALM}"
+    
     if [[ -z "${ML_WALLET_PASSWORD}" ]]; then
-        ML_WALLET_PASSWORD_PAYLOAD=""
+        ML_WALLET_PASSWORD_PAYLOAD="wallet-password=${ML_ADMIN_PASSWORD}"
     else
         info "ML_WALLET_PASSWORD is defined, setting wallet-password."
         ML_WALLET_PASSWORD_PAYLOAD="wallet-password=${ML_WALLET_PASSWORD}"
@@ -346,8 +370,9 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
     restart_check "${HOSTNAME}" "${TIMESTAMP}"
 
     # Check if bootstrap is the localhost to install security database when MARKLOGIC_JOIN_CLUSTER=true
-    BOOTSTRAP_STATUS=$(verify_bootstrap_status "${MARKLOGIC_BOOTSTRAP_HOST}")
-
+    if [[ "${MARKLOGIC_JOIN_CLUSTER}" = "true" ]] && [[ -n "${MARKLOGIC_BOOTSTRAP_HOST}" ]]; then
+        BOOTSTRAP_STATUS=$(verify_bootstrap_status "${MARKLOGIC_BOOTSTRAP_HOST}")
+    fi
     # Only call /v1/instance-admin if host is bootstrap/standalone host
     # first condition is to make sure bootstrap host installs security db even when MARKLOGIC_JOIN_CLUSTER is true
     # second condition is for request where MARKLOGIC_JOIN_CLUSTER is not true, considering it's a bootstrap host
@@ -361,11 +386,8 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
 
         # Get last restart timestamp directly before instance-admin call to verify restart after
         TIMESTAMP=$(curl -s --anyauth "http://${HOSTNAME}:8001/admin/v1/timestamp")
-        
-        curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null \
-            -X POST -H \"Content-type:application/x-www-form-urlencoded; charset=utf-8\" \
-            -d \"admin-username=${ML_ADMIN_USERNAME}\" --data-urlencode \"admin-password=${ML_ADMIN_PASSWORD}\" \
-            -d \"realm=${ML_REALM}\" -d \"${ML_WALLET_PASSWORD_PAYLOAD}\""
+
+        curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null -X POST -H \"Content-type:application/x-www-form-urlencoded; charset=utf-8\" -d \"${ML_ADMIN_USERNAME_PAYLOAD}\" -d \"${ML_ADMIN_PASSWORD_PAYLOAD}\" -d \"${ML_REALM_PAYLOAD}\" -d \"${ML_WALLET_PASSWORD_PAYLOAD}\""
 
         restart_check "${HOSTNAME}" "${TIMESTAMP}"
     fi
@@ -383,12 +405,12 @@ fi
 if [[ -f /var/opt/MarkLogic/DOCKER_JOIN_CLUSTER ]]; then
     info "MARKLOGIC_JOIN_CLUSTER is true, but skipping join because this instance has already joined a cluster."
 elif [[ "${MARKLOGIC_JOIN_CLUSTER}" == "true" ]]; then
+    # Check if TLS is enabled on Bootstrap host
+    validate_tls_parameters "${BOOTSTRAP_STATUS}"
     # Validate bootsrap host before joining cluster
     BOOTSTRAP_STATUS=$(verify_bootstrap_status "${MARKLOGIC_BOOTSTRAP_HOST}")
 
     if [[ "${BOOTSTRAP_STATUS}" == "valid" ]]; then
-        # Check if TLS is enabled on Bootstrap host
-        check_tls_param "${MARKLOGIC_BOOTSTRAP_HOST}"
         info "MARKLOGIC_JOIN_CLUSTER is true and join conditions are met, joining host to the cluster."
         if [[ -z "${MARKLOGIC_GROUP}" ]]; then
             info "MARKLOGIC_GROUP is not specified, adding host to the Default group."
@@ -449,15 +471,15 @@ ML_HOST_PROTOCOL=$(get_host_protocol "localhost" "7997")
 
 while true
 do
-    HOST_RESP_CODE=$(curl "${ML_HOST_PROTOCOL}"://localhost:"${HEALTH_CHECK}" -X GET -o host_health.xml -s -w "%{http_code}\n" -k)
+    HOST_RESP_CODE=$(curl "${ML_HOST_PROTOCOL}"://"${HOSTNAME}":"${HEALTH_CHECK}" -X GET -o host_health.xml -s -w "%{http_code}\n" --cacert "${ML_CACERT_FILE}")
     [[ -f host_health.xml ]] && error_message=$(< host_health.xml grep "SEC-DEFAULTUSERDNE")
     if [[ "${MARKLOGIC_INIT}" == "true" ]] && [ "${HOST_RESP_CODE}" -eq 200 ]; then
         sudo touch /var/opt/MarkLogic/ready
-        info "Cluster config complete, marking this node as ready."
+        info "Cluster config complete, marking this container as ready."
         break
     elif [[ "${MARKLOGIC_INIT}" == "false" ]] && [[ "${error_message}" =~ "SEC-DEFAULTUSERDNE" ]]; then
         sudo touch /var/opt/MarkLogic/ready
-        info "Cluster config complete, marking this node as ready."
+        info "Cluster config complete, marking this container as ready."
         rm -f host_health.xml
         break
     else

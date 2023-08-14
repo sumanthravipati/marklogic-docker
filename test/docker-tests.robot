@@ -164,9 +164,35 @@ Two node compose example with node joining enode group
   ...  Delete compose from  ./compose-test-6.yaml
   ...  AND  Delete compose from  ./compose-test-7.yaml
 
+# Tests for invalid certificate/CA, invalid  value for MARKLOGIC_JOIN_TLS_ENABLED 
+Compose example with node joining cluster using https with invalid parameter values
+  Start compose from  ./compose-test-10.yaml
+  Compose logs should contain  ./compose-test-10.yaml  *MARKLOGIC_JOIN_TLS_ENABLED must be set to true or false, please review the configuration. Container shutting down.*
+  [Teardown]  Delete compose from  ./compose-test-10.yaml
+
+Compose example with node joining cluster using https and missing certificate parameter
+  Start compose from  ./compose-test-11.yaml
+  Compose logs should contain  ./compose-test-11.yaml  *MARKLOGIC_JOIN_CACERT_FILE is not set, please review the configuration. Container shutting down.*
+  [Teardown]  Delete compose from  ./compose-test-11.yaml
+
+Two node compose example with bootstrap node without SSL enabled and node joining cluster using https 
+  Start compose from  ./compose-test-1.yaml
+  Compose logs should contain  ./compose-test-1.yaml  *Cluster config complete, marking this container as ready.*
+  Verify response for unauthenticated request with  7101  *Unauthorized*
+  Verify response for unauthenticated request with  7101  *Unauthorized*
+  Verify response for unauthenticated request with  7102  *Unauthorized*
+  Verify response for authenticated request with  7100  *Query Console*
+  Verify response for authenticated request with  7101  *No license key has been entered*
+  Verify response for authenticated request with  7102  *Monitoring Dashboard*
+  Start compose from  ./compose-test-2.yaml
+  Compose logs should contain  ./compose-test-2.yaml  *TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down.*
+  [Teardown]  Run keywords  
+  ...  Delete compose from  ./compose-test-2.yaml
+  ...  AND  Delete compose from  ./compose-test-2.yaml
+
 Single node compose example with bootstrap node joining trying to itself
   Start compose from  ./compose-test-8.yaml
-  Compose logs should contain  ./compose-test-8.yaml  *Cluster config complete, marking this node as ready.*
+  Compose logs should contain  ./compose-test-8.yaml  *Cluster config complete, marking this container as ready.*
   Verify response for unauthenticated request with  7100  *Unauthorized*
   Verify response for unauthenticated request with  7101  *Unauthorized*
   Verify response for unauthenticated request with  7102  *Unauthorized*

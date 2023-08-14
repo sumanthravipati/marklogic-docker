@@ -1,0 +1,15 @@
+{
+  "template-name": "testTemplate",
+  "template-description": "This is a test Template",
+  "req": {
+    "version": "0",
+    "subject": {
+      "countryName": "US",
+      "stateOrProvinceName": "CA",
+      "localityName": "Redwood City",
+      "organizationName": "Progress",
+      "organizationalUnitName": "Engineering",
+      "emailAddress": "docker.test@progress.com"
+    }
+  }
+}

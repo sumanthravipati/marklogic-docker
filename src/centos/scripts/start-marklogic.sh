@@ -186,7 +186,7 @@ function validate_tls_parameters {
 }
 
 function validate_cert {
-    resp=$(curl -s --head --cacert "${ML_CACERT_FILE}" "${ML_BOOTSTRAP_PROTOCOL}"://"${MARKLOGIC_BOOTSTRAP_HOST}":8001 --anyauth --user ${ML_ADMIN_USERNAME}:${ML_ADMIN_PASSWORD})
+    resp=$(curl -s --head --cacert "${ML_CACERT_FILE}" "${ML_BOOTSTRAP_PROTOCOL}"://"${MARKLOGIC_BOOTSTRAP_HOST}":8001 --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}")
     if [[ $resp =~ "SSL" ]] ; then
         error "$resp" exit
     fi

@@ -187,7 +187,22 @@ Two node compose example with bootstrap node without SSL enabled and node joinin
   Start compose from  ./compose-test-2.yaml
   Compose logs should contain  ./compose-test-2.yaml  *TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down.*
   [Teardown]  Run keywords  
-  ...  Delete compose from  ./compose-test-2.yaml
+  ...  Delete compose from  ./compose-test-1.yaml
+  ...  AND  Delete compose from  ./compose-test-2.yaml
+
+Two node compose example with node joining cluster using https
+  Start compose from  ./compose-test-1.yaml
+  Compose logs should contain  ./compose-test-1.yaml  *Cluster config complete, marking this container as ready.*
+  Verify response for unauthenticated request with  7101  *Unauthorized*
+  Verify response for authenticated request with  7101  *No license key has been entered*
+  Add certificate template on bootstrap host  ./test_template.json  7102
+  Get certtemplateCA testTemplate 7100
+  Apply certificate testTemplate on App Server Admin 7102
+  Apply certificate testTemplate on App Server Manage 7102
+  Start compose from  ./compose-test-2.yaml
+  Compose logs should contain  ./compose-test-2.yaml  *Cluster config complete, marking this container as ready.*
+  [Teardown]  Run keywords  
+  ...  Delete compose from  ./compose-test-1.yaml
   ...  AND  Delete compose from  ./compose-test-2.yaml
 
 Single node compose example with bootstrap node joining trying to itself

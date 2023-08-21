@@ -3,6 +3,7 @@ Library   Process
 Library   String
 Library   OperatingSystem
 Library   RequestsLibrary
+Library   Collections
 
 *** Variables ***
 @{DOCKER DEFAULTS}  -it  -d  -p  8000:8000  -p  8001:8001  -p  8002:8002  -p7997:7997
@@ -198,14 +199,12 @@ Add certificate template on bootstrap host
   [Arguments]  ${certtemplate path}  ${port}
   [Documentation]  Uses manange endpoint to add a certificate template on a bootstrap host
   ${dir}  ${newfile}=  Split Path  ${certtemplate path}
-  # ${tmpfile}=  ${CURDIR}/test_template.json
-  Create File  ${CURDIR}/tmpfile.json  ${template_var}
   ${auth}  ${headers}=  Generate digest authorization for  ${DEFAULT ADMIN USER}  ${DEFAULT ADMIN PASS}
-  # ${header}=  Create Dictionary  Content-type=application/json 
-  # ${file_1}=  Get File For Streaming Upload  test_template.json
-  Log To Console  ${template_var}
-  ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth}
-  ${response}=  POST On Session  RestSession  url=http://localhost:${port}/manage/v2/certificate-templates  files=@tmpfile.json
+  ${header}=  Create Dictionary  Content-Type=application/json
+  ${json_file}=  Set Variable  test_template.json
+  ${json_data}=  Get File  ${json_file}
+  ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth}  
+  ${response}=  POST On Session  RestSession  url=http://localhost:${port}/manage/v2/certificate-templates  data=${json_data}  headers=${header}
   ${response}=  GET On Session  RestSession  url=http://localhost:${port}/manage/v2/certificate-templates?format=json
 
 Apply certificate ${templateName} on App Server ${appServer} ${port}
@@ -215,12 +214,19 @@ Apply certificate ${templateName} on App Server ${appServer} ${port}
   ${body}=  Create Dictionary  ssl-certificate-template=testTemplate   
   ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth}
   ${response}=  PUT On Session  RestSession  url=http://localhost:${port}/manage/v2/servers/${appServer}/properties?group-id=Default  json=${body}
-  
-Check certtemplate ${templateName} should be applied to Appserver ${appServer} ${port}
-  [Documentation]  Uses manange endpoint to get the app server information of host in a cluster and matches it against input
+
+Get certtemplateCA ${templateName} ${port}
+  [Documentation]  Uses eval endpoint to get the CA of Cert template
   ${auth}  ${headers}=  Generate digest authorization for  ${DEFAULT ADMIN USER}  ${DEFAULT ADMIN PASS}
-  ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth} 
-  ${response}=  GET On Session  RestSession  url=http://localhost:${port}/manage/v2/servers/${appServer}/properties?group-id=Default 
-  ${appservercert}=  Set Variable  ${response.json()['ssl-certificate-template']} 
-  Should Be Equal  ${appservercert}  ${templateName}
+  ${header}=  Create Dictionary  Content-type=application/x-www-form-urlencoded   Accept=multipart/mixed  boundary=BOUNDARY
+  ${xqy_data}=  Get File  get_ca_xquery.xqy
+  ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth}  disable_warnings=1
+  ${response}=  POST On Session  RestSession  url=http://localhost:${port}/v1/eval?database=Security  data=${xqy_data}  headers=${header}
+  ${resptext}=  Set Variable  ${response.text}
+  ${sep}=  Set Variable  X-Path: /*:certificate/*:pem/text()
+  ${regex}=  Set Variable  --(?=.*[a-zA-Z])(?=.*[0-9])[A-Za-z0-9]+--
+  ${pre}  ${post}=  Split String  ${resptext}  ${sep}
+  ${rest}=  Remove String Using Regexp  ${post}  ${regex}
+  ${cert}=	Strip String  ${rest}
+  Create File  test_results/certificate.cer  ${cert}
   

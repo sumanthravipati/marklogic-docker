@@ -2,8 +2,8 @@ version: '3.6'
 services:
     node2:
       image: marklogic-centos/marklogic-server-centos:11-746
-      container_name: node3
-      hostname: node3
+      container_name: node2
+      hostname: node2
       dns_search: ""
       environment:
         - MARKLOGIC_INIT=true
@@ -15,7 +15,7 @@ services:
         - MARKLOGIC_BOOTSTRAP_HOST=bootstrap_3n
         - TZ=Europe/Prague
       volumes:
-        - MarkLogic_3n_vol3:/var/opt/MarkLogic
+        - MarkLogic_3n_vol2:/var/opt/MarkLogic
       secrets:
         - source: mldb_admin_username
           target: mldb_admin_username
@@ -38,4 +38,4 @@ secrets:
 networks:
   external_net: {}
 volumes:
-  MarkLogic_3n_vol3:
+  MarkLogic_3n_vol2:

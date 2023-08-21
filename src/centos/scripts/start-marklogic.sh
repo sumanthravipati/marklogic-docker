@@ -165,7 +165,7 @@ function validate_tls_parameters {
                 if [[ "${host_protocol}" == "https" ]]; then
                     ML_BOOTSTRAP_PROTOCOL="https"
                     # validate the CA certificate
-                    validate_cert
+                    validate_cert "${ML_CACERT_FILE}"
                     info "MARKLOGIC_JOIN_TLS_ENABLED and MARKLOGIC_JOIN_CACERT_FILE are set, TLS will be used for joining cluster."
                 else
                     error "TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down." exit
@@ -186,10 +186,8 @@ function validate_tls_parameters {
 }
 
 function validate_cert {
-    resp=$(curl -s --head --cacert "${ML_CACERT_FILE}" "${ML_BOOTSTRAP_PROTOCOL}"://"${MARKLOGIC_BOOTSTRAP_HOST}":8001 --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}")
-    if [[ $resp =~ "SSL" ]] ; then
-        error "$resp" exit
-    fi
+    local cacertfile=$1
+    resp=$(curl -s -S -L --cacert "${cacertfile}" --ssl "${ML_BOOTSTRAP_PROTOCOL}"://"${MARKLOGIC_BOOTSTRAP_HOST}":8001 --anyauth --user "${ML_ADMIN_USERNAME}":"${ML_ADMIN_PASSWORD}")
 }
 
 ################################################################

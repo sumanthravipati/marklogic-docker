@@ -9,9 +9,7 @@ services:
         - MARKLOGIC_INIT=true
         - MARKLOGIC_ADMIN_USERNAME=test_admin
         - MARKLOGIC_ADMIN_PASSWORD=test_admin_pass
-        - MARKLOGIC_JOIN_TLS_ENABLED=true
-        - MARKLOGIC_JOIN_CLUSTER=true
-        - MARKLOGIC_BOOTSTRAP_HOST=bootstrap_3n
+        - REALM=public
         - TZ=Europe/Prague
       volumes:
         - MarkLogic_3n_vol1:/var/opt/MarkLogic
@@ -24,4 +22,3 @@ networks:
   external_net: {}
 volumes:
   MarkLogic_3n_vol1:
-  

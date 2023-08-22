@@ -16,7 +16,6 @@ ${LICENSE KEY}  %{QA_LICENSE_KEY=none}
 ${LICENSEE}  MarkLogic - Version 9 QA Test License
 ${MARKLOGIC_VERSION}  10-internal
 ${BUILD_BRANCH}  local
-${template_var}  {"template-name": "testTemplate", "template-description": "This is a test Template", "req": {"version": "0","subject": {"countryName": "US","stateOrProvinceName": "CA","localityName": "Redwood City","organizationName": "Progress","organizationalUnitName": "Engineering","emailAddress": "docker.test@progress.com"}}}
 
 *** Keywords ***
 Create container with

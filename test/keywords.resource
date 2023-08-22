@@ -215,7 +215,7 @@ Apply certificate ${templateName} on App Server ${appServer} ${port}
   ${response}=  Create Digest Session  RestSession  url=http://localhost:${port}  headers=${headers}  auth=${auth}
   ${response}=  PUT On Session  RestSession  url=http://localhost:${port}/manage/v2/servers/${appServer}/properties?group-id=Default  json=${body}
 
-Get certtemplateCA ${templateName} ${port}
+Get CAcertificate for ${templateName} ${port}
   [Documentation]  Uses eval endpoint to get the CA of Cert template
   ${auth}  ${headers}=  Generate digest authorization for  ${DEFAULT ADMIN USER}  ${DEFAULT ADMIN PASS}
   ${header}=  Create Dictionary  Content-type=application/x-www-form-urlencoded   Accept=multipart/mixed  boundary=BOUNDARY

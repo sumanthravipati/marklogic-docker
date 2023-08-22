@@ -167,7 +167,7 @@ function validate_tls_parameters {
                     # validate the CA certificate
                     validate_cert "${ML_CACERT_FILE}"
                     info "MARKLOGIC_JOIN_TLS_ENABLED and MARKLOGIC_JOIN_CACERT_FILE are set, TLS will be used for joining cluster."
-                else
+                else``
                     error "TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down." exit
                 fi
             else
@@ -385,7 +385,9 @@ elif [[ "${MARKLOGIC_INIT}" == "true" ]]; then
         # Get last restart timestamp directly before instance-admin call to verify restart after
         TIMESTAMP=$(curl -s --anyauth "http://${HOSTNAME}:8001/admin/v1/timestamp")
 
-        curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null -X POST -H \"Content-type:application/x-www-form-urlencoded; charset=utf-8\" -d \"${ML_ADMIN_USERNAME_PAYLOAD}\" -d \"${ML_ADMIN_PASSWORD_PAYLOAD}\" -d \"${ML_REALM_PAYLOAD}\" -d \"${ML_WALLET_PASSWORD_PAYLOAD}\""
+        curl_retry_validate "http://${HOSTNAME}:8001/admin/v1/instance-admin" 202 "-o /dev/null -X POST \
+            -H \"Content-type:application/x-www-form-urlencoded; charset=utf-8\" -d \"${ML_ADMIN_USERNAME_PAYLOAD}\" \
+            --data-urlencode \"${ML_ADMIN_PASSWORD_PAYLOAD}\" -d \"${ML_REALM_PAYLOAD}\" --data-urlencode \"${ML_WALLET_PASSWORD_PAYLOAD}\""
 
         restart_check "${HOSTNAME}" "${TIMESTAMP}"
     fi

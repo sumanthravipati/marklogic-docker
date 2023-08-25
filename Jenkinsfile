@@ -385,6 +385,7 @@ pipeline {
                 docker system prune --force --filter "until=720h"
                 docker volume prune --force
                 docker image prune --force --all
+		docker volume ls
             '''
             publishTestResults()
         }

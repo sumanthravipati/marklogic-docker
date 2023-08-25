@@ -167,7 +167,7 @@ function validate_tls_parameters {
                     # validate the CA certificate
                     validate_cert "${ML_CACERT_FILE}"
                     info "MARKLOGIC_JOIN_TLS_ENABLED and MARKLOGIC_JOIN_CACERT_FILE are set, TLS will be used for joining cluster."
-                else``
+                else
                     error "TLS is not enabled on bootstrap_host_name host, please verify the configuration. Container shutting down." exit
                 fi
             else
@@ -467,7 +467,7 @@ if [[ "${MARKLOGIC_VERSION}" =~ "10" ]] || [[ "${MARKLOGIC_VERSION}" =~ "9" ]]; 
 else 
      HEALTH_CHECK="7997/LATEST/healthcheck"
 fi
-ML_HOST_PROTOCOL=$(get_host_protocol "localhost" "7997")
+ML_HOST_PROTOCOL=$(get_host_protocol "${HOSTNAME}" "7997")
 
 while true
 do
